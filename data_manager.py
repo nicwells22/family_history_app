@@ -98,10 +98,29 @@ def add_person(people: List[Dict]) -> None:
                 if not is_valid_date(value):
                     print(f"⚠️  Invalid date format. Please use YYYY-MM-DD format (e.g., 1990-01-15).")
                     continue  # This will repeat the current field's input
-                    
-            # If we get here, the input is valid
+            
+            # Handle parent fields (father/mother)
+            if field in ['father', 'mother']:
+                parent_name = value
+                parent_gender = 'Male' if field == 'father' else 'Female'
+                
+                # Check if parent already exists
+                parent_exists = any(p.get('name', '').lower() == parent_name.lower() for p in people)
+                
+                if not parent_exists:
+                    # Create a new person record for the parent
+                    parent = {
+                        'name': parent_name,
+                        'gender': parent_gender
+                    }
+                    people.append(parent)
+                    print(f"✅ Added {parent_name} ({parent_gender}) as a new person.")
+            
+            # Set the field value (this will be the parent's name)
             person[field] = value
             break  # Move to next field
+    
+    # Add the new person to the list
     people.append(person)
     print(f"\n✅ Added {person['name']} to the family tree!")
     
