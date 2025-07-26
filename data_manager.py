@@ -45,6 +45,71 @@ def save_people(filename: str, people: List[Dict]) -> None:
         writer.writeheader()
         writer.writerows(people)
 
+def _get_field_input(field: str, current_value: str = '', is_editing: bool = False) -> str:
+    """Helper function to get and validate field input from the user."""
+    field_hints = {
+        'birth_date': ' (format: YYYY-MM-DD, e.g., 1980-05-15)',
+        'death_date': ' (format: YYYY-MM-DD, e.g., 2020-10-22)',
+        'gender': ' (enter Male or Female)'
+    }
+    
+    while True:
+        hint = field_hints.get(field, '')
+        
+        # Different prompts for editing vs adding
+        if is_editing:
+            prompt = f"{field.replace('_', ' ').title()}{hint} [{current_value}]: "
+            value = input(prompt).strip()
+            # If editing and user pressed Enter, keep the current value
+            if not value:
+                return current_value
+        else:
+            prompt = f"{field.replace('_', ' ').title()}{hint}: "
+            value = input(prompt).strip()
+            # If adding a required field, value can't be empty
+            if field in REQUIRED_FIELDS and not value:
+                print(f"⚠️  {field.replace('_', ' ').title()} is required.")
+                continue
+            # If optional field and empty, return empty string
+            if not value:
+                return ''
+        
+        # Validate gender input
+        if field == 'gender' and value:
+            value_lower = value.lower()
+            if value_lower in ['male', 'female']:
+                return value.capitalize()
+            print("⚠️  Please enter 'Male' or 'Female' for gender.")
+            continue
+                
+        # Validate date format if it's a date field
+        if field in ['birth_date', 'death_date'] and value:
+            if not is_valid_date(value):
+                print(f"⚠️  Invalid date format. Please use YYYY-MM-DD format (e.g., 1990-01-15).")
+                continue
+        
+        return value
+
+def _handle_parent_field(people: List[Dict], field: str, value: str) -> None:
+    """Helper function to handle parent field creation and validation."""
+    if not value or field not in ['father', 'mother']:
+        return
+        
+    parent_name = value
+    parent_gender = 'Male' if field == 'father' else 'Female'
+    
+    # Check if parent already exists (case-insensitive)
+    parent_exists = any(p.get('name', '').lower() == parent_name.lower() for p in people)
+    
+    if not parent_exists:
+        # Create a new person record for the parent
+        parent = {
+            'name': parent_name,
+            'gender': parent_gender
+        }
+        people.append(parent)
+        print(f"✅ Added {parent_name} ({parent_gender}) as a new person.")
+
 def add_person(people: List[Dict]) -> None:
     """
     Interactively add a new person to the people list with helpful input hints.
@@ -52,73 +117,18 @@ def add_person(people: List[Dict]) -> None:
     print("\n=== Add New Person ===")
     person = {}
     
-    # Field-specific hints
-    field_hints = {
-        'birth_date': ' (format: YYYY-MM-DD, e.g., 1980-05-15)',
-        'death_date': ' (format: YYYY-MM-DD, e.g., 2020-10-22)',
-        'gender': ' (enter Male or Female)'
-    }
-    
     # Get required fields
     for field in REQUIRED_FIELDS:
-        while True:
-            hint = field_hints.get(field, '')
-            value = input(f"{field.replace('_', ' ').title()}{hint}: ").strip()
-            
-            # Validate gender input
-            if field == 'gender' and value:
-                value_lower = value.lower()
-                if value_lower in ['male', 'female']:
-                    value = value.capitalize()
-                else:
-                    print("⚠️  Please enter 'Male' or 'Female' for gender.")
-                    continue
-                    
-            if value:
-                person[field] = value
-                break
-                
-            print(f"⚠️  {field.replace('_', ' ').title()} is required.")
+        person[field] = _get_field_input(field)
     
     # Get optional fields
     for field in OPTIONAL_FIELDS:
-        if field in person:  # Skip if already set
-            continue
-            
-        while True:
-            hint = field_hints.get(field, '')
-            value = input(f"{field.replace('_', ' ').title()}{hint} (press Enter to skip): ").strip()
-            
-            # If user pressed Enter, skip this field
-            if not value:
-                break
-                
-            # Validate date format if it's a date field
-            if field in ['birth_date', 'death_date']:
-                if not is_valid_date(value):
-                    print(f"⚠️  Invalid date format. Please use YYYY-MM-DD format (e.g., 1990-01-15).")
-                    continue  # This will repeat the current field's input
-            
-            # Handle parent fields (father/mother)
-            if field in ['father', 'mother']:
-                parent_name = value
-                parent_gender = 'Male' if field == 'father' else 'Female'
-                
-                # Check if parent already exists
-                parent_exists = any(p.get('name', '').lower() == parent_name.lower() for p in people)
-                
-                if not parent_exists:
-                    # Create a new person record for the parent
-                    parent = {
-                        'name': parent_name,
-                        'gender': parent_gender
-                    }
-                    people.append(parent)
-                    print(f"✅ Added {parent_name} ({parent_gender}) as a new person.")
-            
-            # Set the field value (this will be the parent's name)
-            person[field] = value
-            break  # Move to next field
+        if field not in person:  # Skip if already set (shouldn't happen in add_person)
+            value = _get_field_input(field)
+            if value:  # Only set if user provided a value
+                person[field] = value
+                # Handle parent fields if this is a parent field with a value
+                _handle_parent_field(people, field, value)
     
     # Add the new person to the list
     people.append(person)
@@ -162,10 +172,14 @@ def edit_person(people: List[Dict]) -> None:
     
     # Show current values and allow editing
     for field in ALL_FIELDS:
-        current = person.get(field, "")
-        new_value = input(f"{field.replace('_', ' ').title()} [{current}]: ").strip()
-        if new_value:
+        current_value = person.get(field, "")
+        new_value = _get_field_input(field, current_value, is_editing=True)
+        
+        # Only update if the value has changed
+        if new_value != current_value:
             person[field] = new_value
+            # Handle parent fields if this is a parent field with a value
+            _handle_parent_field(people, field, new_value)
     
     print(f"\n✅ Updated {person['name']}'s information!")
 
