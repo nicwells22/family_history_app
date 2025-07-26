@@ -1,6 +1,4 @@
 import random
-from data_loader import load_ancestors
-import yaml
 import data_manager
 from question_engine import (
     load_questions, render_question, 
