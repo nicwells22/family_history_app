@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+from jinja2 import Environment, BaseLoader
 
 @dataclass
 class Question(ABC):
@@ -51,9 +52,13 @@ class MultipleChoiceQuestion(Question):
             return False
     
     def get_question_text(self, person: Dict[str, Any], person_data: Dict[str, Dict]) -> str:
-        return self.text.format(person=person, 
-                              person_data=person_data,
-                              get_parent=lambda p: person_data.get(person.get(p, ''), {}))
+        env = Environment(loader=BaseLoader())
+        template = env.from_string(self.text)
+        return template.render(
+            person=person,
+            person_data=person_data,
+            get_parent=lambda p: person_data.get(person.get(p, ''), {})
+        )
     
     def get_correct_answer(self, person: Dict[str, Any], person_data: Dict[str, Dict]) -> Any:
         return self._evaluate_expression(self.answer_expression, person, person_data)
