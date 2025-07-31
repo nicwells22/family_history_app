@@ -74,6 +74,58 @@
   answer_function: "get_year(person['birth_date'])"
   choices_function: "get_year_choices(person['birth_date'])"
 
+- id: paternal_grandfather
+  question: "Who is {{ person.name }}'s paternal grandfather?"
+  type: "multiple_choice"
+  required_fields: ["father"]
+  required_relationships: ["father.father"]
+  answer_function: "person_data[person['father']]['father']"
+  choices_function: >
+    get_name_choices_by_gender(
+      person_data, 
+      person_data.get(person_data[person['father']]['father'], {}), 
+      'male'
+    )
+
+- id: paternal_grandmother
+  question: "Who is {{ person.name }}'s paternal grandmother?"
+  type: "multiple_choice"
+  required_fields: ["father"]
+  required_relationships: ["father.mother"]
+  answer_function: "person_data[person['father']]['mother']"
+  choices_function: >
+    get_name_choices_by_gender(
+      person_data, 
+      person_data.get(person_data[person['father']]['mother'], {}), 
+      'female'
+    )
+
+- id: maternal_grandfather
+  question: "Who is {{ person.name }}'s maternal grandfather?"
+  type: "multiple_choice"
+  required_fields: ["mother"]
+  required_relationships: ["mother.father"]
+  answer_function: "person_data[person['mother']]['father']"
+  choices_function: >
+    get_name_choices_by_gender(
+      person_data, 
+      person_data.get(person_data[person['mother']]['father'], {}), 
+      'male'
+    )
+
+- id: maternal_grandmother
+  question: "Who is {{ person.name }}'s maternal grandmother?"
+  type: "multiple_choice"
+  required_fields: ["mother"]
+  required_relationships: ["mother.mother"]
+  answer_function: "person_data[person['mother']]['mother']"
+  choices_function: >
+    get_name_choices_by_gender(
+      person_data, 
+      person_data.get(person_data[person['mother']]['mother'], {}), 
+      'female'
+    )
+
 - id: year_of_death
   question: "In what year did {{ person.name }} die?"
   type: "multiple_choice"
