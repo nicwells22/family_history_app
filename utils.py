@@ -166,3 +166,46 @@ def compare_ages(father_age, mother_age):
         return "They were the same age"
     else:
         return "Unknown"
+
+def get_year_choices(date_str, num_choices=4, year_range=10):
+    """
+    Generate multiple choice options for year-based questions.
+    
+    Args:
+        date_str (str): The date string in 'YYYY-MM-DD' format
+        num_choices (int): Number of choices to return (default: 4)
+        year_range (int): Range of years to consider for incorrect choices (default: 10)
+        
+    Returns:
+        list: List of year options including the correct year
+    """
+    try:
+        # Extract the year from the date string
+        correct_year = get_year(date_str)
+        
+        # Generate some incorrect choices
+        years = {correct_year}
+        
+        # Add years within the specified range
+        while len(years) < min(num_choices, year_range + 1):
+            offset = random.randint(1, year_range)
+            # Add both before and after the correct year
+            for sign in [-1, 1]:
+                if len(years) >= num_choices:
+                    break
+                years.add(correct_year + (offset * sign))
+        
+        # If we still don't have enough choices, add some random years
+        while len(years) < num_choices:
+            # Generate a random year within 100 years of the correct year
+            years.add(correct_year + random.randint(-100, 100))
+        
+        # Convert to list, shuffle, and return
+        years = list(years)
+        random.shuffle(years)
+        return years[:num_choices]
+        
+    except (ValueError, TypeError, AttributeError):
+        # Fallback in case of invalid date string
+        current_year = datetime.now().year
+        return sorted([current_year - 30, current_year - 20, current_year - 10, current_year])

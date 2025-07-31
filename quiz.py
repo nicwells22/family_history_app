@@ -1,12 +1,6 @@
 import random
 import data_manager
 import question_engine
-from utils import (
-    calculate_age, get_year, safe_eval,
-    get_multiple_choices, get_age_choices, 
-    get_name_choices_by_gender, get_place_choices,
-    compare_ages, get_parent
-)
 
 def show_menu():
     print("\n📜 Family History App")
@@ -35,6 +29,7 @@ def run_quiz():
     valid_questions = []
     for person in person_data.values():
         person_questions = question_engine.get_valid_questions(person, person_data, all_questions)
+        print(f"Valid questions for {person['name']}: {person_questions}\n")
         valid_questions.extend([(person, q) for q in person_questions])
     
     if not valid_questions:
