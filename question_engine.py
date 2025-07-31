@@ -23,7 +23,17 @@ def load_questions(yaml_file: str) -> List[Question]:
 def get_valid_questions(person: Dict[str, Any], 
                        person_data: Dict[str, Dict], 
                        questions: List[Question]) -> List[Question]:
-    """Return list of questions that are valid for the given person."""
+    """
+    Get all questions that are valid for the given person.
+    
+    Args:
+        person: The person to validate questions against
+        person_data: Dictionary of all people
+        questions: List of questions to validate
+        
+    Returns:
+        List[Question]: List of valid questions for the person
+    """
     return [q for q in questions if q.is_valid_for(person, person_data)]
 
 # def load_questions(yaml_file):
@@ -89,4 +99,3 @@ def get_valid_questions(person: Dict[str, Any],
 #         return False
 #     except Exception:
 #         return False
-
