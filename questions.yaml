@@ -49,20 +49,35 @@
   choices_function: "get_age_choices(person_data[person['mother']]['birth_date'], person['birth_date'])"
 
 - id: which_parent_was_older
-  question: "Who was older when {{ person.name }} was born: their mother or father?"
+  question: "Is {{ person.name }}'s father or mother older?"
   type: "multiple_choice"
-  required_fields: ["birth_date", "father.birth_date", "mother.birth_date"]
+  required_fields: ["father.birth_date", "mother.birth_date"]
   answer_function: >
     compare_ages(
       calculate_age(person_data[person['father']]['birth_date'], person['birth_date']),
       calculate_age(person_data[person['mother']]['birth_date'], person['birth_date'])
     )
   choices_function: >
-    ["Mother", "Father", "They were the same age", "Unknown"]
+    ["Mother", "Father", "They were the same age"]
 
 - id: died_where_born
   question: "Did {{ person.name }} die in the same place they were born?"
   type: "multiple_choice"
   required_fields: ["birth_place", "death_place"]
   answer_function: "person['birth_place'] == person['death_place']"
-  choices_function: "[True, False, 'Unknown', person['birth_place']]"
+  choices_function: "[True, False]"
+
+- id: year_of_birth
+  question: "In what year was {{ person.name }} born?"
+  type: "multiple_choice"
+  required_fields: ["birth_date"]
+  answer_function: "get_year(person['birth_date'])"
+  choices_function: "get_year_choices(person['birth_date'])"
+
+- id: year_of_death
+  question: "In what year did {{ person.name }} die?"
+  type: "multiple_choice"
+  required_fields: ["death_date"]
+  answer_function: "get_year(person['death_date'])"
+  choices_function: "get_year_choices(person['death_date'])"
+
