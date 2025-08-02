@@ -1,0 +1,8 @@
+birth_date,birth_place,death_date,death_place,father,father_id,gender,id,mother,mother_id,name,spouse,spouse_id
+1960-12-19,"Brigham City, UT",,,p_6f8c94ef,,male,p_6086a39b,p_ab28b0a7,,William Kevin Wells,p_a116ec5e,
+,,,,,,female,p_a116ec5e,,,Valerie Hyde,p_6086a39b,
+,,,,,,female,p_1d6e6c3c,,,Eryn Nicole Williams,p_91c65c86,
+1991-04-12,"Logan, UT",,,p_6086a39b,,Male,p_91c65c86,p_a116ec5e,,Nicholas Wells,p_1d6e6c3c,
+2019-03-26,"Pittsburg, PA",,,p_91c65c86,,Female,p_49f51014,p_1d6e6c3c,,Annalise Mae Wells,,
+,,,,,,male,p_6f8c94ef,,,Glade DeVerle Wells,,
+,,,,,,female,p_ab28b0a7,,,Beulah Fae Cottle,,

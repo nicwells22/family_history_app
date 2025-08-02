@@ -19,7 +19,9 @@ def safe_eval(expr, context):
 def get_multiple_choices(field, person_data, correct, transform=None):
     pool = []
     for p in person_data.values():
-        val = p.get(field)
+        val = getattr(p, field, None)
+        if not val and hasattr(p, 'additional_data') and field in p.additional_data:
+            val = p.additional_data[field]
         if not val:
             continue
         val = transform(val) if transform else val
@@ -47,21 +49,21 @@ def get_age_choices(birth, death):
 
 def pick_random_people_with_lifespans(person_data, count=3, include=None):
     candidates = [p for p in person_data.values()
-                  if p.get('birth_date') and p.get('death_date') and p != include]
-    sample = random.sample(candidates, k=count)
+                  if getattr(p, 'birth_date', None) and getattr(p, 'death_date', None) and p != include]
+    sample = random.sample(candidates, k=min(count, len(candidates)))
     if include:
         sample.append(include)
     random.shuffle(sample)
-    return [p['name'] for p in sample]
+    return [p.name for p in sample]
 
 def longest_lived(people_list):
-    def age(p): return calculate_age(p['birth_date'], p['death_date'])
-    return max(people_list, key=age)['name']
+    def age(p): return calculate_age(p.birth_date, p.death_date)
+    return max(people_list, key=age).name
 
 def get_people_by_gender(person_data, gender):
     return [
         p for p in person_data.values()
-        if p.get("gender", "").lower().startswith(gender[0])  # handles "male"/"m"
+        if getattr(p, 'gender', '').lower().startswith(gender[0].lower())  # handles "male"/"m"
     ]
 
 def get_place_choices(field, person_data, correct_place):
@@ -72,7 +74,9 @@ def get_place_choices(field, person_data, correct_place):
     # Get all unique places from the specified field
     places = set()
     for person in person_data.values():
-        place = person.get(field)
+        place = getattr(person, field, None)
+        if not place and hasattr(person, 'additional_data') and field in person.additional_data:
+            place = person.additional_data[field]
         if place and place != correct_place:  # Exclude the correct place
             places.add(place)
     
@@ -100,22 +104,25 @@ def get_place_choices(field, person_data, correct_place):
 def get_name_choices_by_gender(person_data, correct_person, target_gender):
     """
     Return 4 total names (including the correct one), all matching the target gender.
-    correct_person can be either a person dictionary or a name string.
+    correct_person can be either a Person object, person ID, or name string.
     """
+    # Handle case where correct_person is a person ID
+    if isinstance(correct_person, str) and correct_person in person_data:
+        correct_name = person_data[correct_person].name
     # Handle case where correct_person is just a name string
-    if isinstance(correct_person, str):
+    elif isinstance(correct_person, str):
         correct_name = correct_person
-    # Handle case where correct_person is a dictionary
-    elif isinstance(correct_person, dict) and "name" in correct_person:
-        correct_name = correct_person["name"]
+    # Handle case where correct_person is a Person object
+    elif hasattr(correct_person, 'name'):
+        correct_name = correct_person.name
     else:
         correct_name = "Unknown"
     
     # Get all names of the target gender (excluding the correct name)
     options = []
     for p in person_data.values():
-        if p.get("gender", "").lower().startswith(target_gender[0].lower()) and p.get("name") != correct_name:
-            options.append(p["name"])
+        if getattr(p, 'gender', '').lower().startswith(target_gender[0].lower()) and p.name != correct_name:
+            options.append(p.name)
     
     # Remove duplicates and ensure we have a list
     options = list(set(options))
@@ -135,7 +142,7 @@ def get_name_choices_by_gender(person_data, correct_person, target_gender):
     
     # If we still don't have enough options, use any available names
     if len(options) < 3:
-        all_names = [p["name"] for p in person_data.values() if p.get("name") != correct_name]
+        all_names = [p.name for p in person_data.values() if p.name != correct_name]
         while len(options) < 3 and all_names:
             name = random.choice(all_names)
             if name not in options:
@@ -152,10 +159,10 @@ def get_name_choices_by_gender(person_data, correct_person, target_gender):
 
 def get_parent(person, person_data, parent_type):
     """Safely get parent data, returning a default dict if parent not found"""
-    parent_name = person.get(parent_type)
-    if not parent_name or parent_name not in person_data:
-        return {'name': parent_name or f'Unknown {parent_type.capitalize()}'}
-    return person_data[parent_name]
+    parent_id = getattr(person, f'{parent_type}_id', None)
+    if not parent_id or parent_id not in person_data:
+        return type('DefaultPerson', (), {'name': f'Unknown {parent_type.capitalize()}'})
+    return person_data[parent_id]
 
 def compare_ages(father_age, mother_age):
     if father_age > mother_age:

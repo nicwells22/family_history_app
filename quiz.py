@@ -1,10 +1,11 @@
 import random
 import sys
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
+from models.person import Person
 import data_manager
-import question_engine
-from models.question import Question
+from models.question import Question, QuestionFactory
+import yaml
 
 def show_menu() -> int:
     """
@@ -41,175 +42,177 @@ def run_quiz() -> None:
     print("\n📜 Starting the Ancestor Quiz!")
     
     # Load data using data_manager
-    people = data_manager.load_people("data.csv")
+    people = data_manager.load_people("data/people.csv")
     if not people:
         print("No family data found. Please add some family members first.")
         return
-        
-    person_data = {p['name']: p for p in people}
     
-    # Load questions
-    try:
-        all_questions = question_engine.load_questions("questions.yaml")
-        if not all_questions:
-            print("No questions found. Please check your questions.yaml file.")
-            return
-    except Exception as e:
-        print(f"Error loading questions: {e}")
-        return
+    # Load questions from YAML
+    with open("questions.yaml", 'r') as f:
+        questions_data = yaml.safe_load(f)
     
-    # Get valid questions
-    valid_questions = []
-    for person in person_data.values():
-        person_questions = question_engine.get_valid_questions(person, person_data, all_questions)
-        valid_questions.extend([(person, q) for q in person_questions])
+    # Create Question objects
+    questions = [QuestionFactory.from_yaml(q) for q in questions_data]
     
-    if not valid_questions:
+    # Get valid questions for each person
+    all_questions = []
+    for person in people.values():
+        valid_questions = [
+            q for q in questions 
+            if q.is_valid_for(person, people)
+        ]
+        all_questions.extend([(person, q) for q in valid_questions])
+    
+    if not all_questions:
         print("No valid questions found with the current family data.")
-        print("Make sure you have enough family members with complete information.")
         return
     
-    # Run quiz
+    # Shuffle questions
+    random.shuffle(all_questions)
+    
+    # Administer quiz
     score = 0
-    num_questions = min(10, len(valid_questions))
-    selected_questions = random.sample(valid_questions, num_questions)
+    total = min(10, len(all_questions))  # Limit to 10 questions
     
-    print(f"\nYou'll be asked {num_questions} questions. Let's begin!\n")
+    print(f"\nYou'll be asked {total} questions. Let's begin!\n")
     
-    for i, (person, question) in enumerate(selected_questions, 1):
-        try:
-            # Display question
-            print(f"\nQuestion {i}: {question.get_question_text(person, person_data)}")
-            
-            # Get and display choices
-            choices = question.get_choices(person, person_data)
-            if not choices:
-                print("Skipping question - no valid choices generated.")
-                continue
-                
-            for idx, choice in enumerate(choices, 1):
-                print(f"{idx}. {choice}")
-            
-            # Get and validate user answer
-            while True:
-                try:
-                    user_choice = input("\nYour answer (number, or 'q' to quit): ").strip().lower()
-                    
-                    if user_choice == 'q':
-                        print("\nQuiz ended early.")
-                        return
-                        
-                    if not user_choice.isdigit():
-                        raise ValueError("Please enter a number")
-                        
-                    user_choice_idx = int(user_choice) - 1
-                    if user_choice_idx < 0 or user_choice_idx >= len(choices):
-                        raise ValueError(f"Please enter a number between 1 and {len(choices)}")
-                        
-                    break
-                    
-                except ValueError as e:
-                    print(f"Invalid input: {e}")
-                except (KeyboardInterrupt, EOFError):
-                    print("\nQuiz ended early.")
-                    return
-            
-            # Check answer
+    for i, (person, question) in enumerate(all_questions[:total], 1):
+        # Get question text and correct answer
+        q_text = question.get_question_text(person, people)
+        correct_answer = question.get_correct_answer(person, people)
+        
+        # Get choices (shuffled)
+        choices = question.get_choices(person, people)
+        random.shuffle(choices)
+        
+        # Display question
+        print(f"\nQuestion {i}:")
+        print(q_text)
+        
+        # Display choices
+        for idx, choice in enumerate(choices, 1):
+            print(f"{idx}. {choice}")
+        
+        # Get user's answer
+        while True:
             try:
-                correct_answer = question.get_correct_answer(person, person_data)
-                user_answer = choices[user_choice_idx]
-                
-                if user_answer == correct_answer:
-                    print("✅ Correct!")
-                    score += 1
-                else:
-                    print(f"❌ Incorrect. The correct answer was: {correct_answer}")
+                user_choice = input("\nYour answer (1-4, or 'q' to quit): ").strip().lower()
+                if user_choice == 'q':
+                    print("\nQuiz aborted.")
+                    return
                     
-            except Exception as e:
-                print(f"Error checking answer: {e}")
-                
-        except Exception as e:
-            print(f"\nAn error occurred with this question: {e}")
-            continue
+                user_choice = int(user_choice)
+                if 1 <= user_choice <= len(choices):
+                    break
+                print(f"Please enter a number between 1 and {len(choices)}.")
+            except ValueError:
+                print("Please enter a valid number or 'q' to quit.")
+        
+        # Check answer
+        user_answer = choices[user_choice - 1]
+        if user_answer == correct_answer:
+            print("✅ Correct!")
+            score += 1
+        else:
+            print(f"❌ Incorrect. The correct answer is: {correct_answer}")
     
-    # Display final score
-    print(f"\n{'🎉' * 3} Quiz Complete! {'🎉' * 3}")
-    print(f"Your score: {score} out of {num_questions} ({(score/num_questions)*100:.1f}%)")
-    
-    # Add some encouragement based on score
-    if score == num_questions:
-        print("Perfect score! You know your family history well!")
-    elif score / num_questions >= 0.8:
-        print("Excellent job! You know your family history very well!")
-    elif score / num_questions >= 0.5:
-        print("Good job! You know quite a bit about your family.")
+    # Show results
+    print(f"\nQuiz complete! Your score: {score}/{total} ({(score/total)*100:.1f}%)")
+    if score == total:
+        print("🎉 Perfect score! You know your family well!")
+    elif score >= total * 0.7:
+        print("👍 Great job! You know your family pretty well!")
+    elif score >= total * 0.4:
+        print("🤔 Not bad! Keep learning about your family history!")
     else:
-        print("Keep learning about your family history!")
-    
-    # input("\nPress Enter to return to the main menu...")
+        print("💡 Keep learning! You'll get better with time!")
 
-def view_all_people():
+def view_all_people() -> None:
     """Display all people in the database."""
-    people = data_manager.load_people("data.csv")
-    print("\n=== Family Members ===")
-    for i, person in enumerate(people, 1):
-        print(f"{i}. {person.get('name')} ({person.get('gender', 'unknown')})")
-        if 'birth_date' in person or 'birth_place' in person:
-            print(f"   Born: {person.get('birth_date', '?')} in {person.get('birth_place', '?')}")
-        if 'death_date' in person or 'death_place' in person:
-            print(f"   Died: {person.get('death_date', '?')} in {person.get('death_place', '?')}")
+    people = data_manager.load_people("data/people.csv")
+    if not people:
+        print("No people found in the database.")
+        return
+        
+    print("\n=== People in Database ===")
+    for i, (person_id, person) in enumerate(people.items(), 1):
+        print(f"{i}. {person.name} (ID: {person_id})")
+        print(f"   Gender: {person.gender}")
+        print(f"   Birth: {person.birth_date or '?'} in {person.birth_place or '?'}")
+        if person.father_id and person.father_id in people:
+            print(f"   Father: {people[person.father_id].name} (ID: {person.father_id})")
+        if person.mother_id and person.mother_id in people:
+            print(f"   Mother: {people[person.mother_id].name} (ID: {person.mother_id})")
+        if person.spouse_id and person.spouse_id in people:
+            print(f"   Spouse: {people[person.spouse_id].name} (ID: {person.spouse_id})")
+        if person.children:
+            children_names = [
+                f"{people[cid].name} (ID: {cid}" 
+                for cid in person.children 
+                if cid in people
+            ]
+            if children_names:
+                print(f"   Children: {', '.join(children_names)}")
         print()
 
-def check_initial_setup():
+def check_initial_setup() -> None:
     """Check if we have the minimum required data to run the app."""
-    people = data_manager.load_people("data.csv")
-    if not people or not all(field in person for person in people for field in data_manager.REQUIRED_FIELDS):
-        print("\n👋 Welcome to the Family History App!")
-        print("It looks like this is your first time using the app or you don't have any family members added yet.")
-        print("Let's get started by adding your first family member!")
-        
-        people = []
-        while True:
-            data_manager.add_person(people)
-            data_manager.save_people("data.csv", people)
-            
-            add_another = input("\nWould you like to add another family member? (yes/no): ").strip().lower()
-            if add_another not in ['y', 'yes']:
-                break
-        
-        if not people:
-            print("\n⚠️  You need to add at least one family member to use the app.")
-            return False
-    return True
+    import os
+    from pathlib import Path
+    
+    # Create data directory if it doesn't exist
+    data_dir = Path("data")
+    data_dir.mkdir(exist_ok=True)
+    
+    # Check if data file exists, create empty if not
+    data_file = data_dir / "people.csv"
+    if not data_file.exists():
+        print("No data file found. Creating a new one.")
+        with open(data_file, 'w', newline='', encoding='utf-8') as f:
+            # Create a file with just headers
+            import csv
+            writer = csv.DictWriter(f, fieldnames=['id', 'name', 'gender', 'birth_date', 'birth_place', 'death_date', 'death_place', 'father_id', 'mother_id', 'spouse_id', 'children'])
+            writer.writeheader()
+    
+    # Check if questions file exists
+    questions_file = "questions.yaml"
+    if not os.path.exists(questions_file):
+        print("No questions file found. Please create one.")
+        exit(1)
 
-def main():
-    # Check if we need to do initial setup
-    if not check_initial_setup():
-        print("\nExiting the Family History App. Goodbye!")
-        return
-        
-    print("\n📜 Welcome to the Family History App!")
+def main() -> None:
+    """Main entry point for the application."""
+    check_initial_setup()
     
     while True:
-        choice = show_menu()
-        
-        if choice == 1:  # Run Quiz
-            run_quiz()
-        elif choice == 2:  # Add New Person
-            people = data_manager.load_people("data.csv")
-            data_manager.add_person(people)
-            data_manager.save_people("data.csv", people)
-        elif choice == 3:  # Edit Person
-            people = data_manager.load_people("data.csv")
-            data_manager.edit_person(people)
-            data_manager.save_people("data.csv", people)
-        elif choice == 4:  # View All People
-            view_all_people()
-        elif choice == 5:  # Exit
-            print("\n👋 Thank you for using the Family History App!")
+        try:
+            choice = show_menu()
+            
+            if choice == 1:
+                run_quiz()
+            elif choice == 2:
+                people = data_manager.load_people("data/people.csv")
+                data_manager.add_person(people)
+                data_manager.save_people("data/people.csv", people)
+            elif choice == 3:
+                people = data_manager.load_people("data/people.csv")
+                data_manager.edit_person(people)
+                data_manager.save_people("data/people.csv", people)
+            elif choice == 4:
+                view_all_people()
+            elif choice == 5:
+                print("\n👋 Goodbye!")
+                break
+                
+        except KeyboardInterrupt:
+            print("\n\n👋 Goodbye!")
             break
-        else:
-            print("Invalid choice. Please try again.")
+        except Exception as e:
+            print(f"\n⚠️  An error occurred: {e}")
+            import traceback
+            traceback.print_exc()  # Print full traceback for debugging
+            print("Please try again or contact support if the problem persists.")
+            continue
 
 if __name__ == "__main__":
     main()
