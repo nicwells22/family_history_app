@@ -1,3 +1,6 @@
 data.csv
 __pycache__
 .venv
+
+# checks
+check_valid_questions.py

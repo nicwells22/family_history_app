@@ -10,7 +10,7 @@ class Question(ABC):
     required_fields: List[str] = field(default_factory=list)
     required_relationships: List[str] = field(default_factory=list)
     
-    def is_valid_for(self, person: Dict[str, Any], person_data: Dict[str, Dict]) -> bool:
+    def is_valid_for(self, person: 'Person', person_data: Dict[str, 'Person']) -> bool:
         """
         Check if this question is valid for the given person.
         
@@ -19,60 +19,101 @@ class Question(ABC):
         2. All required relationships exist and are valid
         3. The question-specific validation passes
         """
-        # Check required fields
         if not self._has_required_fields(person):
+            # print(f"Question {self.id} is invalid for {person.name}: missing required fields")
             return False
             
-        # Check required relationships
         if not self._has_required_relationships(person, person_data):
+            # print(f"Question {self.id} is invalid for {person.name}: missing required relationships")
             return False
             
         # Let subclasses add their own validation
         return self._is_valid(person, person_data)
     
-    def _has_required_fields(self, person: Dict[str, Any]) -> bool:
-        """Check if person has all required fields with non-empty values."""
+    def _has_required_fields(self, person: 'Person') -> bool:
+        """
+        Check if person has all required fields with non-empty values.
+        
+        Args:
+            person: The Person object to check
+            
+        Returns:
+            bool: True if all required fields have non-empty values, False otherwise
+        """
         for field in self.required_fields:
-            if not person.get(field):
+            # First try to get the attribute directly
+            value = getattr(person, field, None)
+            
+            # If not found and the field is in additional_data, use that
+            if not value and hasattr(person, 'additional_data') and field in person.additional_data:
+                value = person.additional_data[field]
+                
+            # If still no value, check for common variations (e.g., birth_place vs birthplace)
+            if not value and hasattr(person, 'additional_data'):
+                # Try common variations of the field name
+                variations = [
+                    field.lower().replace('_', ''),  # birth_place -> birthplace
+                    field.lower().replace('_', ' '),  # birth_place -> birth place
+                    field.lower().replace('_', '') + 's',  # child -> children
+                    field.lower() + 's' if not field.endswith('s') else field[:-1],  # child -> children, children -> child
+                ]
+                
+                for variation in variations:
+                    if variation in person.additional_data:
+                        value = person.additional_data[variation]
+                        break
+            
+            # If value is still empty, the field is missing
+            if not value:
                 return False
+                
         return True
     
-    def _has_required_relationships(self, person: Dict[str, Any], person_data: Dict[str, Dict]) -> bool:
+    def _has_required_relationships(self, person: 'Person', person_data: Dict[str, 'Person']) -> bool:
         """
         Check if all required relationships exist and are valid.
         Relationships are specified as 'parent.field' or 'relationship_name'.
         """
         for rel in self.required_relationships:
-            # Handle parent.field syntax
+            # Handle parent.field syntax (e.g., 'father.birth_date')
             if '.' in rel:
                 rel_type, field = rel.split('.', 1)
-                parent_name = person.get(rel_type)
-                if not parent_name or parent_name not in person_data:
+                # Get the parent ID (e.g., person.father_id)
+                parent_id = getattr(person, f"{rel_type}_id", None)
+                if not parent_id or parent_id not in person_data:
                     return False
-                if not person_data[parent_name].get(field):
+                # Check if the parent has the required field
+                parent = person_data[parent_id]
+                field_value = getattr(parent, field, None)
+                if not field_value and hasattr(parent, 'additional_data') and field in parent.additional_data:
+                    field_value = parent.additional_data[field]
+                if not field_value:
                     return False
-            # Handle direct relationship check
-            elif rel not in person or not person[rel]:
-                return False
+            # Handle direct relationship check (e.g., 'father_id')
+            else:
+                # Check if the relationship ID exists
+                rel_id = getattr(person, rel, None)
+                if not rel_id or rel_id not in person_data:
+                    return False
         return True
     
     @abstractmethod
-    def _is_valid(self, person: Dict[str, Any], person_data: Dict[str, Dict]) -> bool:
+    def _is_valid(self, person: 'Person', person_data: Dict[str, 'Person']) -> bool:
         """Subclasses should implement their specific validation logic."""
         pass
-    
+        
     @abstractmethod
-    def get_question_text(self, person: Dict[str, Any], person_data: Dict[str, Dict]) -> str:
+    def get_question_text(self, person: 'Person', person_data: Dict[str, 'Person']) -> str:
         """Render the question text with the given context."""
         pass
-    
+        
     @abstractmethod
-    def get_correct_answer(self, person: Dict[str, Any], person_data: Dict[str, Dict]) -> Any:
+    def get_correct_answer(self, person: 'Person', person_data: Dict[str, 'Person']) -> Any:
         """Get the correct answer for this question."""
         pass
-    
+        
     @abstractmethod
-    def get_choices(self, person: Dict[str, Any], person_data: Dict[str, Dict]) -> List[Any]:
+    def get_choices(self, person: 'Person', person_data: Dict[str, 'Person']) -> List[Any]:
         """Get possible answer choices for this question."""
         pass
 
@@ -91,46 +132,105 @@ class MultipleChoiceQuestion(Question):
         self.answer_expression = answer_expression
         self.choices_expression = choices_expression
     
-    def _is_valid(self, person: Dict[str, Any], person_data: Dict[str, Dict]) -> bool:
-        """Additional validation specific to multiple choice questions."""
+    def _is_valid(self, person: 'Person', person_data: Dict[str, 'Person']) -> bool:
+        # For multiple choice, we need to be able to generate choices
         try:
-            # Check if we can generate valid choices
-            choices = self._evaluate_expression(self.choices_expression, person, person_data)
-            return bool(choices)  # Must have at least one choice
-        except Exception as e:
-            print(f"Error validating question {self.id}: {e}")
+            choices = self.get_choices(person, person_data)
+            return bool(choices)  # Valid if we have at least one choice
+        except (KeyError, AttributeError, IndexError) as e:
+            print(f"Invalid question {self.id} for {getattr(person, 'name', 'unknown')}: {e}")
             return False
-    
-    def get_question_text(self, person: Dict[str, Any], person_data: Dict[str, Dict]) -> str:
+            
+    def get_question_text(self, person: 'Person', person_data: Dict[str, 'Person']) -> str:
+        # Simple template rendering with person data
         env = Environment(loader=BaseLoader())
         template = env.from_string(self.text)
-        return template.render(
-            person=person,
-            person_data=person_data,
-            get_parent=lambda p: person_data.get(person.get(p, ''), {})
-        )
-    
-    def get_correct_answer(self, person: Dict[str, Any], person_data: Dict[str, Dict]) -> Any:
-        return self._evaluate_expression(self.answer_expression, person, person_data)
-    
-    def get_choices(self, person: Dict[str, Any], person_data: Dict[str, Dict]) -> List[Any]:
-        return self._evaluate_expression(self.choices_expression, person, person_data)
-    
-    def _evaluate_expression(self, expr: str, person: Dict, person_data: Dict) -> Any:
-        # Safe evaluation context
+        
+        # Create a context with the person and person_data directly
+        # Jinja2 can access object attributes directly
         context = {
             'person': person,
             'person_data': person_data,
-            'get_parent': lambda p: person_data.get(person.get(p, ''), {})
+            # Also include person's attributes at the top level for backward compatibility
+            'name': person.name,
+            'gender': person.gender,
+            'birth_date': person.birth_date,
+            'birth_place': person.birth_place,
+            'death_date': person.death_date,
+            'death_place': person.death_place,
+            'father_id': person.father_id,
+            'mother_id': person.mother_id,
+            'spouse_id': person.spouse_id,
+            'children': person.children,
+            **person.additional_data  # Include any additional fields
         }
-        # Add utility functions
+        
+        return template.render(**context)
+        
+    def get_correct_answer(self, person: 'Person', person_data: Dict[str, 'Person']) -> Any:
+        if not self.answer_expression:
+            return None
+        return self._evaluate_expression(self.answer_expression, person, person_data)
+        
+    def get_choices(self, person: 'Person', person_data: Dict[str, 'Person']) -> List[Any]:
+        if not self.choices_expression:
+            return []
+        return self._evaluate_expression(self.choices_expression, person, person_data)
+        
+    def _evaluate_expression(self, expr: str, person: 'Person', person_data: Dict[str, 'Person']) -> Any:
+        """Safely evaluate an expression in the context of person data."""
+        # Restrict builtins for security
+        safe_builtins = {
+            'len': len,
+            'str': str,
+            'int': int,
+            'float': float,
+            'list': list,
+            'dict': dict,
+            'set': set,
+            'range': range,
+            'min': min,
+            'max': max,
+            'sum': sum,
+            'sorted': sorted,
+            'enumerate': enumerate,
+            'zip': zip,
+            'any': any,
+            'all': all,
+            'bool': bool,
+        }
+        
+        if not expr:
+            return None
+            
+        # Import utility functions
         from utils import (
             calculate_age, get_year, get_multiple_choices,
             get_age_choices, get_name_choices_by_gender,
             get_place_choices, compare_ages, get_year_choices
         )
-        context.update(locals())
-        return eval(expr, {'__builtins__': {}}, context)
+        
+        # Create a safe evaluation context
+        safe_globals = {
+            '__builtins__': safe_builtins,
+            'person': person,
+            'person_data': person_data,
+            'calculate_age': calculate_age,
+            'get_year': get_year,
+            'get_multiple_choices': get_multiple_choices,
+            'get_age_choices': get_age_choices,
+            'get_name_choices_by_gender': get_name_choices_by_gender,
+            'get_place_choices': get_place_choices,
+            'compare_ages': compare_ages,
+            'get_year_choices': get_year_choices,
+        }
+        
+        try:
+            # Evaluate the expression in the safe context
+            return eval(expr, {'__builtins__': {}}, safe_globals)
+        except Exception as e:
+            print(f"Error evaluating expression '{expr}': {e}")
+            raise
 
 class QuestionFactory:
     @staticmethod
